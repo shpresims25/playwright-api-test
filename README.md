@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # User Management API – Playwright API Tests
 
 Automated API tests (Playwright Test + TypeScript) for the Flask **User Management API** (`GET /health`, `POST /users`, `GET /users/{id}`, `DELETE /users/{id}`).
@@ -173,6 +172,3 @@ Some tests fail on more than one defect; the first failing assertion is reported
 - **Fixtures**: inject the client into tests; `seedUser` removes repeated setup code.
 - **Tests**: contain all scenarios and assertions, with descriptive names and failure messages.
 - **Config**: base URL, worker count and reporters each defined once.
-=======
-# playwright-api-test
->>>>>>> origin/main
