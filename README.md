@@ -136,6 +136,52 @@ On macOS, `127.0.0.1` is recommended instead of `localhost` if
 
 The HTML report is generated in `playwright-report/`.
 
+## Requirements Under Test
+
+The tests check the behavior below. It is derived from the API
+requirements and from the expectations encoded in the tests.
+
+  -----------------------------------------------------------------------
+  Endpoint                Requirement             Expected status
+  ----------------------- ----------------------- -----------------------
+  `GET /health`           Reports the service is  `200`,
+                          up                      `{"status":"ok"}`
+
+  `POST /users`           Valid `name` and        `201` with `id`,
+                          `email` creates a user  `name`, `email`
+
+  `POST /users`           `name` and `email` are  `400`
+                          required, must be       
+                          strings, and must not   
+                          be blank                
+
+  `POST /users`           `email` must have a     `400`
+                          valid basic format      
+
+  `POST /users`           `email` must be unique, `409`
+                          ignoring letter case    
+
+  `POST /users`           Malformed JSON or JSON  `400`
+                          that is not an object   
+
+  `GET /users/{id}`       Returns the user with   `200`
+                          exactly that ID         
+
+  `GET /users/{id}`       Unknown ID              `404`
+
+  `GET /users/{id}`       Invalid ID (`0`,        `400`
+                          negative, non-numeric)  
+
+  `DELETE /users/{id}`    Removes the user,       `204`, empty body
+                          returns no body         
+
+  `DELETE /users/{id}`    Unknown ID              `404`
+
+  `DELETE /users/{id}`    Invalid ID              `400`
+  -----------------------------------------------------------------------
+
+Error responses are expected to be JSON with a non-empty `error` message.
+
 ## Test Approach
 
 -   Tests create the data they need and do not rely on fixed user IDs or
@@ -150,6 +196,32 @@ The HTML report is generated in `playwright-report/`.
 -   The test setup checks API availability before running the test
     suite. If the API cannot be reached, check that the Flask
     application is running and that `BASE_URL` is correct.
+
+### Why These Scenarios
+
+The goal was to check the contract, not to maximize the number of tests.
+
+-   **Start from the documented requirements.** Each stated status code
+    (`201`, `400`, `404`, `409`, `204`) has at least one test, and the
+    manual Postman scenarios are mapped one to one.
+-   **Add boundaries and variations around each rule.** Missing,
+    empty and whitespace-only values are different inputs and can hit
+    different validation paths. The same applies to each wrong JSON type
+    and to IDs such as `0`, `-1`, `1.5`, `1abc` and a very large number.
+-   **Check data integrity, not only status codes.** A rejected request
+    must not create or change a user, and deleting one user must not
+    affect another. A status code alone would miss defects such as
+    `DELETE` returning `204` without removing anything.
+-   **Verify the full lifecycle.** The workflow test chains create, get,
+    delete and get, and uses soft assertions so one run reports every
+    deviation.
+-   **Separate facts from opinions.** Behavior the requirements state is
+    tagged `@contract`. Behavior they do not define is tagged
+    `@exploratory`, so a failure there is a question for the team, not a
+    confirmed bug.
+-   **Keep failures meaningful.** Test setup accepts any `2xx` when it
+    creates preconditions, so the create defect does not cause unrelated
+    GET and DELETE tests to fail.
 
 ## Test Coverage
 
@@ -284,6 +356,73 @@ and the documented requirements. The main findings were:
 
 Some tests can be affected by more than one issue. After an issue is
 resolved, rerun the suite to identify any remaining failures.
+
+## Bug Reports
+
+Each report was found by the automated tests against the supplied API.
+Confirm the observed responses with `npm test` and the HTML report
+(`npm run report`) before sharing.
+
+### BUG-01: `POST /users` returns `200` instead of `201`
+
+-   **Severity:** Low (wrong status code, data is created correctly)
+-   **Failing tests:** CRT-001, CRT-002, WF-001
+-   **Steps:**
+    1.  Send `POST /users` with
+        `{"name":"Alex Smith","email":"alex@example.com"}`.
+-   **Expected:** `201 Created` with `id`, `name` and `email`.
+-   **Actual:** `200 OK`.
+
+### BUG-02: Invalid email addresses are accepted
+
+-   **Severity:** Medium (bad data is stored)
+-   **Failing tests:** CRT-006, CRT-018.2 to CRT-018.4, and the
+    exploratory EXP-005 and EXP-006
+-   **Steps:**
+    1.  Send `POST /users` with `{"name":"Alex","email":"user@"}`.
+    2.  Repeat with `@example.com` and `user@@example.com`.
+-   **Expected:** `400` with a JSON `error` message.
+-   **Actual:** The user is created. The API appears to check only that
+    the email contains an `@`.
+-   **Note:** CRT-006 (`email-jovalid@`) is the scenario from the manual
+    testing.
+
+### BUG-03: Duplicate emails are accepted
+
+-   **Severity:** High (breaks the uniqueness rule)
+-   **Failing tests:** CRT-007, CRT-008, CRT-019, CRT-021
+-   **Steps:**
+    1.  Create a user with `dup@example.com`.
+    2.  Send `POST /users` again with `dup@example.com`.
+    3.  Repeat step 2 with `DUP@EXAMPLE.COM`.
+-   **Expected:** `409 Conflict`, and the original user is unchanged.
+-   **Actual:** The duplicate is accepted, including when it differs
+    only by letter case.
+
+### BUG-04: `GET /users/{id}` returns the wrong user
+
+-   **Severity:** High (returns another user's data)
+-   **Failing tests:** GET-001, GET-009, DEL-010, WF-001
+-   **Steps:**
+    1.  Create a user and note its `id` from the response.
+    2.  Send `GET /users/{id}` with that `id`.
+-   **Expected:** `200` with the same `id`, `name` and `email`.
+-   **Actual:** The response contains `id + 1`, which is a different
+    ID than requested.
+
+### BUG-05: `DELETE /users/{id}` does not remove the user
+
+-   **Severity:** High (data is not deleted)
+-   **Failing tests:** DEL-003, DEL-009, WF-001
+-   **Steps:**
+    1.  Create a user and note its `id`.
+    2.  Send `DELETE /users/{id}`. It returns `204`.
+    3.  Send `GET /users/{id}` again, or repeat the `DELETE`.
+-   **Expected:** `404` on the second request.
+-   **Actual:** The user can still be retrieved. The API reports
+    success without deleting.
+-   **Note:** BUG-04 can hide this defect on direct retrieval. The
+    workflow test reports both in one run.
 
 ## Test Categories
 
