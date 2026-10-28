@@ -360,8 +360,8 @@ resolved, rerun the suite to identify any remaining failures.
 ## Bug Reports
 
 Each report was found by the automated tests against the supplied API.
-Confirm the observed responses with `npm test` and the HTML report
-(`npm run report`) before sharing.
+The full run reported 68 tests: 50 passed and 18 failed. The observed
+responses below were confirmed with direct requests to the running API.
 
 ### BUG-01: `POST /users` returns `200` instead of `201`
 
@@ -399,16 +399,20 @@ Confirm the observed responses with `npm test` and the HTML report
 -   **Actual:** The duplicate is accepted, including when it differs
     only by letter case.
 
-### BUG-04: `GET /users/{id}` returns the wrong user
+### BUG-04: `GET /users/{id}` returns the wrong `id` in the response
 
--   **Severity:** High (returns another user's data)
+-   **Severity:** Medium (the user data is correct, but clients receive
+    an ID that does not match the user)
 -   **Failing tests:** GET-001, GET-009, DEL-010, WF-001
 -   **Steps:**
-    1.  Create a user and note its `id` from the response.
-    2.  Send `GET /users/{id}` with that `id`.
--   **Expected:** `200` with the same `id`, `name` and `email`.
--   **Actual:** The response contains `id + 1`, which is a different
-    ID than requested.
+    1.  Create a user and note its `id` from the response (for example
+        `429`).
+    2.  Send `GET /users/429`.
+-   **Expected:** `200` with `"id": 429` and the same `name` and `email`.
+-   **Actual:** `200` with the correct `name` and `email`, but
+    `"id": 430` (the requested ID plus one).
+-   **Evidence:** `GET /users/429` returned
+    `{"email":"probe@example.com","id":430,"name":"Probe"}`.
 
 ### BUG-05: `DELETE /users/{id}` does not remove the user
 
@@ -421,8 +425,11 @@ Confirm the observed responses with `npm test` and the HTML report
 -   **Expected:** `404` on the second request.
 -   **Actual:** The user can still be retrieved. The API reports
     success without deleting.
--   **Note:** BUG-04 can hide this defect on direct retrieval. The
-    workflow test reports both in one run.
+-   **Evidence:** `DELETE /users/429` returned `204`, then
+    `GET /users/429` returned `200` with the user, and a second `DELETE`
+    returned `204` instead of `404`.
+-   **Note:** The workflow test reports BUG-01, BUG-04 and BUG-05 in one
+    run.
 
 ## Test Categories
 
